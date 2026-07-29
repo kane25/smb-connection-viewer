@@ -3,6 +3,7 @@
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $src = Join-Path $root 'src\SmbConnectionViewer.cs'
 $manifest = Join-Path $root 'src\SmbConnectionViewer.exe.manifest'
+$icon = Join-Path $root 'assets\smb-connection-viewer.ico'
 $dist = Join-Path $root 'dist'
 $out = Join-Path $dist 'SmbConnectionViewer.exe'
 $compiler = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
@@ -15,11 +16,16 @@ if (-not (Test-Path -LiteralPath $compiler)) {
     throw '找不到 .NET Framework C# 编译器 csc.exe。'
 }
 
+if (-not (Test-Path -LiteralPath $icon)) {
+    throw '找不到应用图标。'
+}
+
 New-Item -ItemType Directory -Force -Path $dist | Out-Null
 
 & $compiler /nologo /codepage:65001 /target:winexe /platform:anycpu /optimize+ `
     /out:$out `
     /win32manifest:$manifest `
+    /win32icon:$icon `
     /reference:System.dll `
     /reference:System.Core.dll `
     /reference:System.Drawing.dll `
