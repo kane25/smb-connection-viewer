@@ -26,6 +26,7 @@ namespace SmbConnectionViewer
         private readonly TreeView tree = new TreeView();
         private readonly Label statusLabel = new Label();
         private readonly Button refreshButton = new Button();
+        private readonly Button disconnectIdleButton = new Button();
         private readonly Button kickButton = new Button();
         private readonly Button saveNoteButton = new Button();
         private readonly CheckBox autoRefreshBox = new CheckBox();
@@ -58,6 +59,14 @@ namespace SmbConnectionViewer
             StartPosition = FormStartPosition.CenterScreen;
             Font = new Font("Microsoft YaHei UI", 9F);
             BackColor = Color.FromArgb(248, 250, 252);
+            try
+            {
+                Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+            }
+            catch
+            {
+                // The embedded application icon is optional at runtime.
+            }
 
             BuildLayout();
             LoadNotes();
@@ -136,6 +145,10 @@ namespace SmbConnectionViewer
             secondsLabel.AutoSize = true;
             secondsLabel.Margin = new Padding(0, 9, 18, 0);
             topBar.Controls.Add(secondsLabel);
+
+            ConfigureButton(disconnectIdleButton, "断开空闲连接", 126, Color.FromArgb(217, 119, 6), Color.White);
+            disconnectIdleButton.Click += delegate { DisconnectIdleSessions(); };
+            topBar.Controls.Add(disconnectIdleButton);
 
             ConfigureButton(kickButton, "踢出所选连接", 128, Color.FromArgb(220, 38, 38), Color.White);
             kickButton.Enabled = false;
@@ -687,6 +700,58 @@ $files = @(Get-SmbOpenFile | ForEach-Object { [pscustomobject]@{ SessionId = [st
             {
                 MessageBox.Show("踢出连接失败。请用管理员身份运行。\r\n" + ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+        }
+
+        private void DisconnectIdleSessions()
+        {
+            SmbSnapshot snapshot;
+            try
+            {
+                snapshot = ReadSmbSnapshot();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("读取SMB连接失败。请用管理员身份运行。\r\n" + ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            var total = snapshot.IdleSessions.Count;
+            if (total == 0)
+            {
+                MessageBox.Show("当前没有未打开文件的SMB连接。", Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            var answer = MessageBox.Show(
+                "将断开 " + total + " 个未打开文件的SMB连接。\r\n正在打开文件的连接不会受到影响。\r\n\r\n确定继续吗？",
+                "断开空闲SMB连接",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning);
+            if (answer != DialogResult.Yes)
+            {
+                return;
+            }
+
+            var disconnected = 0;
+            var failed = 0;
+            foreach (var row in snapshot.IdleSessions)
+            {
+                try
+                {
+                    var command = "Close-SmbSession -SessionId " + QuotePowerShellLiteral(row.Session.SessionId) + " -Force";
+                    RunPowerShell(command);
+                    disconnected++;
+                }
+                catch
+                {
+                    failed++;
+                }
+            }
+
+            RefreshData();
+            statusLabel.Text = failed == 0
+                ? "已断开 " + disconnected + " 个未打开文件的连接"
+                : "已断开 " + disconnected + " 个连接，" + failed + " 个连接断开失败";
         }
 
         private string ResolveDisplayName(SmbSession session)
